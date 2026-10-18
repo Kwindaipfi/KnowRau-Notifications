@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: KnowRauNotificationService
+  datasource:
+    url: jdbc:postgresql://localhost:5436/brainwaze_notification_db
+    username: postgres
+    password: "Aluwani071@@@@@"
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+  mail:
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  kafka:
+    consumer:
+      group-id: nknowrau-notification-service
+
+server:
+  port: 8089
+security:
+  jwt:
+    secret: "REPLACE_WITH_YOUR_AUTH_SERVICE_JWT_SECRET"
+  service:
+    token: "notification-service-dev-token-2026"
+cors:
+  allowed-origins:
+    - http://localhost:4200
+    - http://localhost:4300
+notifications:
+  channels:
+    email:
+      enabled: false
+      from: no-reply@knowrau.local
+      from-name: KnowRau
+    sms:
+      enabled: false
+
+
+#### Important things to know
+#  **1. Database connection**
+#The configuration expects this database container:
+#  | Setting | Value |
+#  |---|---|
+#  | Container | `brainwave-notifications-postgres` |
+#  | Database | `brainwaze_notification_db` |
+#  | Host port | `5436` |
+#  | Username | `postgres` |
+#  | Password | `ChangeMe_Notification_2026!` |
+#  The password must match the one you actually used when creating the container. If you chose a different password, update the YAML accordingly.
+#  **2. Hibernate and Flyway**
+#- `ddl-auto: validate` means Hibernate checks that your database schema matches your entities; it will not create tables automatically.
+#- `flyway.enabled: true` enables Flyway database migrations.
+#- We'll create the initial migration under `src/main/resources/db/migration/`, for example `V1__create_notifications_table.sql`.
+#  **3. JWT security**
+#  Replace `REPLACE_WITH_YOUR_AUTH_SERVICE_JWT_SECRET` with the actual JWT signing secret used by your authentication service. The Notification Service must validate tokens using the same compatible signing configuration as your authentication service.
+#  **4. Email and SMS**
+#  Both channels are disabled for now. We'll implement in-app notifications first, then configure email and SMS when you're ready.
+#  **5. Local development only**
+#  Hard-coding credentials is acceptable temporarily for local development, but don't commit real secrets to Git or use these settings in production.
+#### Our next step
+#Before creating the notification tables, let's verify that the database container is running:
+#  ```bash
+#  docker ps --filter name=brainwave-notifications-postgres
+#
+#  Then we can implement Flyway migration V1 to create the notifications table properly.
