@@ -1,7 +1,7 @@
 package org.BrainWaze.notification.service;
 
 import lombok.RequiredArgsConstructor;
-import org.BrainWaze.notification.domain.NotificationPreference;
+import org.BrainWaze.notification.entity.NotificationPreference;
 import org.BrainWaze.notification.dto.PreferenceRequest;
 import org.BrainWaze.notification.dto.PreferenceResponse;
 import org.BrainWaze.notification.repository.NotificationPreferenceRepository;

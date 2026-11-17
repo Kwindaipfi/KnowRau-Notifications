@@ -1,4 +1,4 @@
-package org.BrainWaze.notification.domain;
+package org.BrainWaze.notification.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

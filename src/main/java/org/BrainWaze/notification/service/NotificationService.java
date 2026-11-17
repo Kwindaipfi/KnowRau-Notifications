@@ -1,19 +1,20 @@
 package org.BrainWaze.notification.service;
 
 import lombok.RequiredArgsConstructor;
-import org.BrainWaze.notification.channel.NotificationDispatcher;
-import org.BrainWaze.notification.domain.Notification;
 import org.BrainWaze.notification.dto.CreateNotificationRequest;
+import org.BrainWaze.notification.dto.NotificationCreatedEvent;
 import org.BrainWaze.notification.dto.NotificationResponse;
+import org.BrainWaze.notification.entity.Notification;
 import org.BrainWaze.notification.repository.NotificationRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
 
@@ -22,16 +23,24 @@ import java.time.Instant;
 public class NotificationService {
 
     private final NotificationRepository repository;
-    private final NotificationDispatcher dispatcher;
+    private final ApplicationEventPublisher eventPublisher;
+    private final NotificationWebSocketService webSocketService;
 
-    /**
-     * Create and persist a notification, then fan it out to the recipient's
-     * enabled external channels (email/SMS) asynchronously. Called from the
-     * internal API by trusted services (matching/booking) when an offer is
-     * accepted, a request is selected, etc.
-     */
     @Transactional
     public NotificationResponse create(CreateNotificationRequest request) {
+
+        var existing = repository
+                .findByRecipientUserIdAndTypeAndReferenceTypeAndReferenceId(
+                        request.recipientUserId(),
+                        request.type(),
+                        request.referenceType(),
+                        request.referenceId()
+                );
+
+        if (existing.isPresent()) {
+            return NotificationResponse.from(existing.get());
+        }
+
         Notification notification = Notification.builder()
                 .recipientUserId(request.recipientUserId())
                 .recipientRole(request.recipientRole())
@@ -45,52 +54,76 @@ public class NotificationService {
                 .createdAt(Instant.now())
                 .build();
 
-        Notification saved = repository.save(notification);
+        Notification saved = repository.saveAndFlush(notification);
 
-        // In-app row is now stored; fan out to email/SMS off the request thread.
-        dispatcher.dispatch(saved, request.recipientEmail(), request.recipientPhone());
+        NotificationResponse response = NotificationResponse.from(saved);
 
-        return NotificationResponse.from(saved);
+        eventPublisher.publishEvent(
+                new NotificationCreatedEvent(
+                        saved.getRecipientUserId(),
+                        response,
+                        request.recipientEmail(),
+                        request.recipientPhone()
+                )
+        );
+
+        return response;
     }
 
     @Transactional(readOnly = true)
-    public Page<NotificationResponse> list(String userId, boolean unreadOnly, int page, int size) {
+    public Page<NotificationResponse> list(
+            String userId,
+            boolean unreadOnly,
+            int page,
+            int size
+    ) {
+
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 clampSize(size),
-                Sort.by(Sort.Direction.DESC, "createdAt"));
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
 
-        Page<Notification> result = unreadOnly
-                ? repository.findByRecipientUserIdAndReadFalseOrderByCreatedAtDesc(userId, pageable)
-                : repository.findByRecipientUserIdOrderByCreatedAtDesc(userId, pageable);
+        Page<Notification> notifications = unreadOnly
+                ? repository.findByRecipientUserIdAndReadFalseOrderByCreatedAtDesc(
+                userId, pageable)
+                : repository.findByRecipientUserIdOrderByCreatedAtDesc(
+                userId, pageable);
 
-        return result.map(NotificationResponse::from);
+        return notifications.map(NotificationResponse::from);
     }
 
     @Transactional(readOnly = true)
     public long unreadCount(String userId) {
+
         return repository.countByRecipientUserIdAndReadFalse(userId);
     }
 
-    /**
-     * Mark a single notification read. Enforces ownership: a user can only
-     * mark their own notifications.
-     */
     @Transactional
-    public NotificationResponse markRead(String userId, Long notificationId) {
-        Notification notification = repository.findById(notificationId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Notification not found"));
+    public NotificationResponse markRead(
+            String userId,
+            Long notificationId
+    ) {
 
-        if (!notification.getRecipientUserId().equals(userId)) {
-            // Do not reveal existence of other users' notifications.
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification not found");
-        }
+        Notification notification = getOwnedNotification(
+                userId,
+                notificationId
+        );
 
         if (!notification.isRead()) {
+
             notification.setRead(true);
             notification.setReadAt(Instant.now());
+
             repository.save(notification);
+
+            long unreadCount = repository
+                    .countByRecipientUserIdAndReadFalse(userId);
+
+            webSocketService.sendUnreadCount(
+                    userId,
+                    unreadCount
+            );
         }
 
         return NotificationResponse.from(notification);
@@ -98,7 +131,70 @@ public class NotificationService {
 
     @Transactional
     public int markAllRead(String userId) {
-        return repository.markAllRead(userId, Instant.now());
+
+        int updated = repository.markAllRead(
+                userId,
+                Instant.now()
+        );
+
+        long unreadCount = repository
+                .countByRecipientUserIdAndReadFalse(userId);
+
+        webSocketService.sendUnreadCount(
+                userId,
+                unreadCount
+        );
+
+        return updated;
+    }
+
+    @Transactional
+    public void deleteNotification(
+            String userId,
+            Long notificationId
+    ) {
+
+        Notification notification = getOwnedNotification(
+                userId,
+                notificationId
+        );
+
+        boolean wasUnread = !notification.isRead();
+
+        repository.delete(notification);
+
+        if (wasUnread) {
+
+            long unreadCount = repository
+                    .countByRecipientUserIdAndReadFalse(userId);
+
+            webSocketService.sendUnreadCount(
+                    userId,
+                    unreadCount
+            );
+        }
+    }
+
+    private Notification getOwnedNotification(
+            String userId,
+            Long notificationId
+    ) {
+
+        Notification notification = repository.findById(notificationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Notification not found"
+                ));
+
+        if (!notification.getRecipientUserId().equals(userId)) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Notification not found"
+            );
+        }
+
+        return notification;
     }
 
     private int clampSize(int size) {

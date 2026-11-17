@@ -1,7 +1,7 @@
 package org.BrainWaze.notification.channel;
 
-import org.BrainWaze.notification.domain.Notification;
-import org.BrainWaze.notification.domain.NotificationPreference;
+import org.BrainWaze.notification.entity.Notification;
+import org.BrainWaze.notification.entity.NotificationPreference;
 import org.BrainWaze.notification.repository.NotificationPreferenceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

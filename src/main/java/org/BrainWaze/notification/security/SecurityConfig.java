@@ -12,7 +12,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -20,56 +19,96 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private final ServiceAuthenticationFilter serviceAuthenticationFilter;
 
-    @Value("${cors.allowed-origins:http://localhost:4200}")
+    @Value("${cors.allowed-origins:http://localhost:4200,http://localhost:4300}")
     private String allowedOrigins;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http
+    ) throws Exception {
 
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health")
-                        .permitAll()
-                        // Internal API: trusted services only (service token).
-                        .requestMatchers("/api/notifications/internal/**")
-                        .hasAuthority(ServiceAuthenticationFilter.SERVICE_AUTHORITY)
-                        // Public API: authenticated end users (JWT).
-                        .requestMatchers("/api/notifications/**")
-                        .authenticated()
-                        .anyRequest()
-                        .authenticated()
+
+                .cors(cors ->
+                        cors.configurationSource(corsConfigurationSource())
                 )
-                // Service token first (so internal calls get the service authority),
-                // then the JWT filter for end-user requests.
+
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
+                .authorizeHttpRequests(auth -> auth
+
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/ws",
+                                "/ws/**"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/notifications/internal/**"
+                        ).hasAuthority(
+                                ServiceAuthenticationFilter.SERVICE_AUTHORITY
+                        )
+
+                        .requestMatchers(
+                                "/api/notifications/**"
+                        ).authenticated()
+
+                        .anyRequest().authenticated()
+                )
+
                 .addFilterBefore(
                         serviceAuthenticationFilter,
-                        UsernamePasswordAuthenticationFilter.class)
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
                 .addFilterBefore(
                         jwtAuthenticationFilter,
-                        UsernamePasswordAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class
+                );
 
         return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toList());
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+
+        config.setAllowedOrigins(
+                List.of(allowedOrigins.split(","))
+                        .stream()
+                        .map(String::trim)
+                        .toList()
+        );
+
+        config.setAllowedMethods(
+                List.of(
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE",
+                        "OPTIONS"
+                )
+        );
+
         config.setAllowedHeaders(List.of("*"));
+
         config.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", config);
+
         return source;
     }
 }

@@ -1,4 +1,4 @@
-package org.BrainWaze.notification.domain;
+package org.BrainWaze.notification.entity;
 
 /**
  * Which side of the platform a notification is addressed to.

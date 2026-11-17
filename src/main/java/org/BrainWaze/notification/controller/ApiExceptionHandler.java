@@ -1,4 +1,4 @@
-package org.BrainWaze.notification.web;
+package org.BrainWaze.notification.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;

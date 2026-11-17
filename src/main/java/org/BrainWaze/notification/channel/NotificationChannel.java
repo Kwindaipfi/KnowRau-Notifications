@@ -1,6 +1,6 @@
 package org.BrainWaze.notification.channel;
 
-import org.BrainWaze.notification.domain.Notification;
+import org.BrainWaze.notification.entity.Notification;
 
 /**
  * A delivery channel (email, SMS, push, ...). The in-app channel is the DB

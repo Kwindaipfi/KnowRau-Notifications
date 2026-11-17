@@ -14,13 +14,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 
-/**
- * Authenticates trusted backend services via a shared service token header,
- * mirroring the DocumentService pattern. A valid token grants
- * ROLE_NOTIFICATION_SERVICE, which is required to call the internal API.
- */
 @Component
 public class ServiceAuthenticationFilter extends OncePerRequestFilter {
 
@@ -41,35 +38,24 @@ public class ServiceAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String token = request.getHeader(SERVICE_TOKEN_HEADER);
+        String providedToken = request.getHeader(SERVICE_TOKEN_HEADER);
 
         if (StringUtils.hasText(serviceToken)
-                && StringUtils.hasText(token)
-                && constantTimeEquals(serviceToken, token)) {
+                && StringUtils.hasText(providedToken)
+                && MessageDigest.isEqual(
+                serviceToken.getBytes(StandardCharsets.UTF_8),
+                providedToken.getBytes(StandardCharsets.UTF_8))) {
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             "notification-service-caller",
                             null,
-                            List.of(new SimpleGrantedAuthority(SERVICE_AUTHORITY)));
+                            List.of(new SimpleGrantedAuthority(SERVICE_AUTHORITY))
+                    );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    /** Length-constant comparison to avoid timing side channels on the token. */
-    private boolean constantTimeEquals(String expected, String provided) {
-        byte[] a = expected.getBytes();
-        byte[] b = provided.getBytes();
-        if (a.length != b.length) {
-            return false;
-        }
-        int result = 0;
-        for (int i = 0; i < a.length; i++) {
-            result |= a[i] ^ b[i];
-        }
-        return result == 0;
     }
 }

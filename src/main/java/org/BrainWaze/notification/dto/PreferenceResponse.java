@@ -1,6 +1,6 @@
 package org.BrainWaze.notification.dto;
 
-import org.BrainWaze.notification.domain.NotificationPreference;
+import org.BrainWaze.notification.entity.NotificationPreference;
 
 public record PreferenceResponse(
         boolean emailEnabled,

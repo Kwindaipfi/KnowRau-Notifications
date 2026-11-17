@@ -1,4 +1,4 @@
-package org.BrainWaze.notification.web;
+package org.BrainWaze.notification.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.BrainWaze.notification.dto.NotificationResponse;
@@ -7,19 +7,10 @@ import org.BrainWaze.notification.service.NotificationService;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-/**
- * Public API consumed by the Angular app. The authenticated user is derived
- * from the JWT; a user can only see and mutate their own notifications.
- */
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
@@ -32,8 +23,8 @@ public class NotificationController {
             Authentication authentication,
             @RequestParam(defaultValue = "false") boolean unreadOnly,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
+            @RequestParam(defaultValue = "20") int size) {
+
         return service.list(currentUserId(authentication), unreadOnly, page, size);
     }
 
@@ -43,20 +34,44 @@ public class NotificationController {
     }
 
     @PatchMapping("/{id}/read")
-    public NotificationResponse markRead(
-            Authentication authentication,
-            @PathVariable Long id
-    ) {
+    public NotificationResponse markRead(Authentication authentication, @PathVariable Long id) {
         return service.markRead(currentUserId(authentication), id);
     }
 
     @PatchMapping("/read-all")
-    public ResponseEntity<Map<String, Integer>> markAllRead(Authentication authentication) {
-        int updated = service.markAllRead(currentUserId(authentication));
-        return ResponseEntity.ok(Map.of("updated", updated));
+    public ResponseEntity<Map<String, Integer>> markAllRead(
+            Authentication authentication
+    ) {
+
+        int updated = service.markAllRead(
+                currentUserId(authentication)
+        );
+
+        return ResponseEntity.ok(
+                Map.of("updated", updated)
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteNotification(
+            Authentication authentication,
+            @PathVariable Long id
+    ) {
+
+        service.deleteNotification(
+                currentUserId(authentication),
+                id
+        );
+
+        return ResponseEntity.noContent().build();
     }
 
     private String currentUserId(Authentication authentication) {
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new IllegalStateException("Unauthenticated user");
+        }
+
         return authentication.getName();
     }
 }
